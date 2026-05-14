@@ -122,16 +122,16 @@ def register_tools(mcp: FastMCP, client: TankClient) -> None:
         return _resolve_session_ref(client.list_sessions(_pod_ip()), session_ref)
 
     @mcp.tool()
-    def create_session(mode: str = "subscription") -> dict[str, Any]:
+    def create_session(mode: str = "claude_gui") -> dict[str, Any]:
         """Create a new tank-operator session pod owned by the calling user.
 
-        `mode` must be one of the supported session modes (subscription,
-        subscription_headless, codex_headless, etc.). Returns the new session's
+        `mode` must be one of the supported Tank session modes. Current chat
+        modes are claude_gui (default) and codex_gui. Returns the new session's
         id, pod_name, status, mode, and url.
 
-        Use create_session + send_prompt to hand work to a fresh agent with a
-        specific prompt after the pod is ready. For a combined spawn-and-run in
-        one call, use spawn_run_session instead.
+        Use create_session + send_prompt to hand work to a fresh SDK session
+        after the pod is ready. For a combined create-and-queue flow, use
+        spawn_run_session instead.
         """
         return client.create_session(_pod_ip(), mode=mode)
 
@@ -193,18 +193,16 @@ def register_tools(mcp: FastMCP, client: TankClient) -> None:
         model: str | None = None,
         permission_mode: str | None = None,
     ) -> dict[str, Any]:
-        """Send a follow-up prompt to an existing headless session.
+        """Send a follow-up prompt to an existing SDK chat session.
 
-        The target session must be in a headless mode (subscription_headless
-        or codex_headless). The call is fire-and-forget: returns 202 once the
-        run has been queued on the pod. The agent in the receiving session picks
-        up with its prior conversation transcript (--continue semantics).
+        The target session must be in a chat-capable mode such as claude_gui or
+        codex_gui. The call is fire-and-forget: returns 202 once the turn has
+        been queued for the pod-side SDK runner.
 
-        `model` and `permission_mode` are forwarded to headless-run.sh;
+        `model` and `permission_mode` are forwarded to the SDK turn queue;
         pre-validated server-side to [A-Za-z0-9._-]{1,64}.
 
-        For a completely fresh agent with no prior context, spawn a new session
-        with spawn_run_session instead.
+        For a completely fresh session, use spawn_run_session instead.
         """
         return client.send_message(
             _pod_ip(),
@@ -217,26 +215,24 @@ def register_tools(mcp: FastMCP, client: TankClient) -> None:
     @mcp.tool()
     def spawn_run_session(
         prompt: str,
-        mode: str = "subscription_headless",
+        mode: str = "claude_gui",
         name: str | None = None,
         model: str | None = None,
         permission_mode: str | None = None,
     ) -> dict[str, Any]:
-        """Create a fresh headless session and dispatch the first prompt to it.
+        """Create a fresh SDK chat session and queue the first prompt to it.
 
         The new pod is owned by the same user as the calling session. Returns
-        the new session record and a url the user can open in the tank UI to
-        watch the run.
+        the new session record plus the queued turn response.
 
         - `prompt`: instructions for the agent (required, non-empty).
-        - `mode`: subscription_headless (Claude, default) or codex_headless.
+        - `mode`: claude_gui (default) or codex_gui.
         - `name`: optional friendly label shown in the tank UI.
-        - `model`, `permission_mode`: forwarded to headless-run.sh verbatim
+        - `model`, `permission_mode`: forwarded to the SDK turn queue
           (validated server-side to [A-Za-z0-9._-]{1,64}).
 
-        Fire-and-forget: returns once the run has been launched. Poll
-        /api/sessions/{id}/run/history (via the stdio mcp-tank server's
-        get_run_history tool) for transcript output.
+        This call waits for the new session pod to become ready, then queues
+        the first turn. Open the returned session URL in Tank to watch progress.
         """
         return client.spawn_run(
             _pod_ip(),

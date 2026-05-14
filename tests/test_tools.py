@@ -330,16 +330,16 @@ def test_send_prompt_forwards_optional_model(mcp_client_pair) -> None:
 
 def test_spawn_run_session_delegates_to_client(mcp_client_pair) -> None:
     mcp, client = mcp_client_pair
-    client.spawn_run.return_value = {"session": {"id": "new"}, "status": "dispatched"}
+    client.spawn_run.return_value = {"session": {"id": "new"}, "status": "queued"}
     fn = _get_tool(mcp, "spawn_run_session")
     with _set_ip("10.0.0.5"):
         result = fn(prompt="investigate issue")
     client.spawn_run.assert_called_once_with(
         "10.0.0.5",
         prompt="investigate issue",
-        mode="subscription_headless",
+        mode="claude_gui",
         name=None,
         model=None,
         permission_mode=None,
     )
-    assert result["status"] == "dispatched"
+    assert result["status"] == "queued"

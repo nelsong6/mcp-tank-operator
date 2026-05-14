@@ -1,6 +1,6 @@
 """HTTP client wrapper for the tank-operator internal sessions API.
 
-Auth: every call presents this pod's projected SA token in Authorization.
+Auth: every call presents this pod's mounted SA token in Authorization.
 The orchestrator validates it via TokenReview and checks the SA subject
 (mcp-tank-operator/mcp-tank-operator) against INTERNAL_API_ALLOWED_SUBJECTS.
 
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,10 +31,9 @@ SA_TOKEN_PATH = os.environ.get(
     "/var/run/secrets/kubernetes.io/serviceaccount/token",
 )
 
-# Cap on streamed prompt output returned in send_prompt results.
-MAX_OUTPUT_CHARS = 40_000
-
 _ERROR_BODY_CAP = 1200
+_SPAWN_READY_TIMEOUT_SECONDS = 120.0
+_SPAWN_READY_POLL_SECONDS = 2.0
 
 
 def _check(r: httpx.Response) -> None:
@@ -167,24 +167,46 @@ class TankClient:
         self,
         caller_pod_ip: str,
         prompt: str,
-        mode: str,
+        mode: str = "claude_gui",
         name: str | None = None,
         model: str | None = None,
         permission_mode: str | None = None,
     ) -> dict[str, Any]:
-        body: dict[str, Any] = {"prompt": prompt, "mode": mode}
+        session = self.create_session(caller_pod_ip, mode=mode)
+        session_id = str(session.get("id") or "")
+        if not session_id:
+            raise RuntimeError(f"create_session returned no id: {session!r}")
+
         if name:
-            body["name"] = name
-        if model:
-            body["model"] = model
-        if permission_mode:
-            body["permission_mode"] = permission_mode
-        r = httpx.post(
-            f"{self._url}/api/internal/sessions/run",
-            params={"caller_pod_ip": caller_pod_ip},
-            json=body,
-            headers=self._headers(),
-            timeout=30.0,
+            session = self.set_session_name(caller_pod_ip, session_id=session_id, name=name)
+
+        session = self._wait_for_session_ready(caller_pod_ip, session_id)
+        message = self.send_message(
+            caller_pod_ip,
+            session_id=session_id,
+            prompt=prompt,
+            model=model,
+            permission_mode=permission_mode,
         )
-        _check(r)
-        return r.json()
+        return {"status": "queued", "session": session, "message": message}
+
+    def _wait_for_session_ready(
+        self,
+        caller_pod_ip: str,
+        session_id: str,
+        timeout_seconds: float = _SPAWN_READY_TIMEOUT_SECONDS,
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + timeout_seconds
+        last_session: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
+            for session in self.list_sessions(caller_pod_ip):
+                if str(session.get("id")) != session_id:
+                    continue
+                last_session = session
+                if session.get("ready_at") or session.get("status") == "Active":
+                    return session
+            time.sleep(_SPAWN_READY_POLL_SECONDS)
+        raise TimeoutError(
+            f"session {session_id} was not ready after {timeout_seconds:.0f}s"
+            + (f"; last state: {last_session!r}" if last_session else "")
+        )
