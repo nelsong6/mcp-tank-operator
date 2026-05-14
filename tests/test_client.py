@@ -110,13 +110,13 @@ def test_list_sessions_sends_get_with_caller_ip(client: TankClient) -> None:
 
 
 def test_create_session_sends_post_with_mode(client: TankClient) -> None:
-    session = {"id": "new123", "mode": "subscription", "status": "Pending"}
+    session = {"id": "new123", "mode": "claude_gui", "status": "Pending"}
     with patch("httpx.post", return_value=_ok_response(session, status=201)) as mock_post:
-        result = client.create_session("10.0.0.1", mode="subscription")
+        result = client.create_session("10.0.0.1", mode="claude_gui")
 
     assert result["id"] == "new123"
     mock_post.assert_called_once()
-    assert mock_post.call_args.kwargs["json"] == {"mode": "subscription"}
+    assert mock_post.call_args.kwargs["json"] == {"mode": "claude_gui"}
     assert mock_post.call_args.kwargs["params"] == {"caller_pod_ip": "10.0.0.1"}
 
 
@@ -217,23 +217,53 @@ def test_send_message_omits_none_optionals(client: TankClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_spawn_run_sends_post_to_run_endpoint(client: TankClient) -> None:
-    resp_body = {"session": {"id": "newrun"}, "status": "dispatched"}
-    with patch("httpx.post", return_value=_ok_response(resp_body, status=202)) as mock_post:
-        result = client.spawn_run("10.0.0.1", prompt="fix the bug", mode="subscription_headless")
+def test_spawn_run_creates_waits_then_sends_message(client: TankClient) -> None:
+    created = {"id": "newrun", "mode": "claude_gui", "status": "Pending"}
+    ready = {
+        "id": "newrun",
+        "mode": "claude_gui",
+        "status": "Active",
+        "ready_at": "2026-05-14T00:00:00Z",
+        "url": "https://tank.romaine.life/?session=newrun",
+    }
+    queued = {"status": "queued", "turn_id": "abc123"}
+    with (
+        patch.object(client, "create_session", return_value=created) as mock_create,
+        patch.object(client, "list_sessions", return_value=[ready]) as mock_list,
+        patch.object(client, "send_message", return_value=queued) as mock_send,
+    ):
+        result = client.spawn_run("10.0.0.1", prompt="fix the bug")
 
-    assert "sessions/run" in mock_post.call_args.args[0]
-    assert result["status"] == "dispatched"
-    body = mock_post.call_args.kwargs["json"]
-    assert body["prompt"] == "fix the bug"
-    assert body["mode"] == "subscription_headless"
+    mock_create.assert_called_once_with("10.0.0.1", mode="claude_gui")
+    mock_list.assert_called_once_with("10.0.0.1")
+    mock_send.assert_called_once_with(
+        "10.0.0.1",
+        session_id="newrun",
+        prompt="fix the bug",
+        model=None,
+        permission_mode=None,
+    )
+    assert result == {"status": "queued", "session": ready, "message": queued}
 
 
 def test_spawn_run_includes_optional_name(client: TankClient) -> None:
-    with patch("httpx.post", return_value=_ok_response({"session": {}, "status": "dispatched"}, status=202)) as mock_post:
-        client.spawn_run("10.0.0.1", prompt="hi", mode="subscription_headless", name="my-run")
+    created = {"id": "newrun", "mode": "codex_gui", "status": "Pending"}
+    named = {"id": "newrun", "mode": "codex_gui", "name": "my-run", "status": "Pending"}
+    ready = {"id": "newrun", "mode": "codex_gui", "status": "Active"}
+    with (
+        patch.object(client, "create_session", return_value=created),
+        patch.object(client, "set_session_name", return_value=named) as mock_name,
+        patch.object(client, "list_sessions", return_value=[ready]),
+        patch.object(client, "send_message", return_value={"status": "queued"}),
+    ):
+        client.spawn_run("10.0.0.1", prompt="hi", mode="codex_gui", name="my-run")
 
-    assert mock_post.call_args.kwargs["json"]["name"] == "my-run"
+    mock_name.assert_called_once_with("10.0.0.1", session_id="newrun", name="my-run")
+
+
+def test_spawn_run_times_out_waiting_for_ready_session(client: TankClient) -> None:
+    with pytest.raises(TimeoutError, match="session newrun was not ready"):
+        client._wait_for_session_ready("10.0.0.1", "newrun", timeout_seconds=0.0)
 
 
 # ---------------------------------------------------------------------------
