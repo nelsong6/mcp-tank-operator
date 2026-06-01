@@ -459,6 +459,7 @@ def register_tools(mcp: FastMCP, client: TankClient) -> None:
         session_id: str,
         slot_index: int | None = None,
         url: str | None = None,
+        pull_request_url: str | None = None,
         active: bool = True,
     ) -> dict[str, Any]:
         """Update Tank's GUI test pill for a caller-owned session.
@@ -472,6 +473,22 @@ def register_tools(mcp: FastMCP, client: TankClient) -> None:
             session_id=session_id,
             active=active,
             slot_index=slot_index,
+            url=url,
+            pull_request_url=pull_request_url,
+        )
+
+    @mcp.tool()
+    def set_pull_request_link(session_id: str, url: str | None) -> dict[str, Any]:
+        """Update Tank's GUI pull request link for a caller-owned test workflow.
+
+        Call this after opening the draft PR for a test workflow. The Tank UI
+        shows a pull-request icon linking to the PR without changing the
+        already-posted test environment link. Pass None or empty string to clear
+        the PR link.
+        """
+        return client.set_pull_request_link(
+            _service_bearer(),
+            session_id=session_id,
             url=url,
         )
 

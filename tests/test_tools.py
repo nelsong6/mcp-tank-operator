@@ -367,13 +367,32 @@ def test_set_test_environment_delegates_to_client(mcp_client_pair) -> None:
     client.set_test_environment.return_value = {"id": "abc"}
     fn = _get_tool(mcp, "set_test_environment")
     with _bearer("jwt"):
-        fn(session_id="abc", slot_index=2, url="https://slot-2")
+        fn(
+            session_id="abc",
+            slot_index=2,
+            url="https://slot-2",
+            pull_request_url="https://github.com/nelsong6/tank-operator/pull/123",
+        )
     client.set_test_environment.assert_called_once_with(
         "jwt",
         session_id="abc",
         active=True,
         slot_index=2,
         url="https://slot-2",
+        pull_request_url="https://github.com/nelsong6/tank-operator/pull/123",
+    )
+
+
+def test_set_pull_request_link_delegates_to_client(mcp_client_pair) -> None:
+    mcp, client = mcp_client_pair
+    client.set_pull_request_link.return_value = {"id": "abc"}
+    fn = _get_tool(mcp, "set_pull_request_link")
+    with _bearer("jwt"):
+        fn(session_id="abc", url="https://github.com/nelsong6/tank-operator/pull/123")
+    client.set_pull_request_link.assert_called_once_with(
+        "jwt",
+        session_id="abc",
+        url="https://github.com/nelsong6/tank-operator/pull/123",
     )
 
 

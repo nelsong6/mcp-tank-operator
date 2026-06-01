@@ -186,11 +186,32 @@ def test_set_session_name_clears_with_none(client: TankClient) -> None:
 
 def test_set_test_environment_sends_post(client: TankClient) -> None:
     with patch("httpx.post", return_value=_ok_response({"id": "abc"})) as mock_post:
-        client.set_test_environment("jwt", session_id="abc", slot_index=2, url="https://slot-2")
+        client.set_test_environment(
+            "jwt",
+            session_id="abc",
+            slot_index=2,
+            url="https://slot-2",
+            pull_request_url="https://github.com/nelsong6/tank-operator/pull/123",
+        )
     assert mock_post.call_args.kwargs["json"] == {
         "active": True,
         "slot_index": 2,
         "url": "https://slot-2",
+        "pull_request_url": "https://github.com/nelsong6/tank-operator/pull/123",
+    }
+    assert mock_post.call_args.kwargs["headers"] == {"Authorization": "Bearer jwt"}
+
+
+def test_set_pull_request_link_sends_post(client: TankClient) -> None:
+    with patch("httpx.post", return_value=_ok_response({"id": "abc"})) as mock_post:
+        client.set_pull_request_link(
+            "jwt",
+            session_id="abc",
+            url="https://github.com/nelsong6/tank-operator/pull/123",
+        )
+    assert mock_post.call_args.args[0].endswith("/api/internal/sessions/abc/pull-request-link")
+    assert mock_post.call_args.kwargs["json"] == {
+        "url": "https://github.com/nelsong6/tank-operator/pull/123",
     }
     assert mock_post.call_args.kwargs["headers"] == {"Authorization": "Bearer jwt"}
 
