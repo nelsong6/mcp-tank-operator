@@ -178,15 +178,33 @@ class TankClient:
         active: bool = True,
         slot_index: int | None = None,
         url: str | None = None,
+        pull_request_url: str | None = None,
     ) -> dict[str, Any]:
         body: dict[str, Any] = {"active": active}
         if slot_index is not None:
             body["slot_index"] = slot_index
         if url:
             body["url"] = url
+        if pull_request_url:
+            body["pull_request_url"] = pull_request_url
         r = httpx.post(
             f"{self._url}/api/internal/sessions/{session_id}/test-state",
             json=body,
+            headers=self._headers(service_jwt),
+            timeout=15.0,
+        )
+        _check(r)
+        return r.json()
+
+    def set_pull_request_link(
+        self,
+        service_jwt: str,
+        session_id: str,
+        url: str | None,
+    ) -> dict[str, Any]:
+        r = httpx.post(
+            f"{self._url}/api/internal/sessions/{session_id}/pull-request-link",
+            json={"url": url},
             headers=self._headers(service_jwt),
             timeout=15.0,
         )

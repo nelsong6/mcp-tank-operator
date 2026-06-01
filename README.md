@@ -21,6 +21,8 @@ Images are SHA-tagged from `main`; `.github/workflows/build.yml` pushes the imag
 - `create_session(mode)` — spawn a new session pod. Current chat modes are `claude_gui` and `codex_gui`; default is `claude_gui`.
 - `delete_session(session_id)` — delete one of the caller's sessions.
 - `set_session_name(session_id, name)` — set or clear the friendly display name.
+- `set_test_environment(session_id, ...)` — update the Tank UI test workflow link state.
+- `set_pull_request_link(session_id, url)` — update the Tank UI PR link for the active test workflow.
 - `get_session_url(session_id)` — tank UI URL for an existing session; accepts either an id or display name.
 - `send_prompt(session_id, prompt, ...)` — fire-and-forget follow-up prompt to an SDK chat session.
 - `spawn_run_session(prompt, mode, ...)` — create a fresh SDK chat session, wait for its pod to become ready, then queue the first prompt.
